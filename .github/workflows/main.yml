@@ -1,0 +1,36 @@
+name: Build RgbSplitVhs
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar mods (ARM64)
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-$ANDROID_NDK_ROOT}}"
+          echo "NDK: $NDK"
+          CXX="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang++"
+          mkdir -p dist
+          for f in src/*.cpp; do
+            name=$(basename "$f" .cpp)
+            echo "=== Compilando $name ==="
+            mkdir -p "dist/$name"
+            "$CXX" -std=c++20 -O2 -fPIC -shared -fvisibility=hidden -static-libstdc++ \
+              -Wl,-z,max-page-size=16384 -Wl,--build-id -s \
+              "$f" -o "dist/$name/lib$name.so" \
+              -lEGL -lGLESv3 -llog -ldl
+            printf '{\n  "type": "preload-native",\n  "name": "%s",\n  "author": "tu-nombre",\n  "version": "1.0.0",\n  "entry": "lib%s.so",\n  "minecraft_versions": ["1.26.5*"]\n}\n' "$name" "$name" > "dist/$name/manifest.json"
+            (cd "dist/$name" && zip -X "../$name.levipack" manifest.json "lib$name.so")
+            unzip -l "dist/$name.levipack"
+            file "dist/$name/lib$name.so"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mods
+          path: dist/*.levipack
